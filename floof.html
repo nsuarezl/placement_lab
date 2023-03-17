@@ -1,0 +1,601 @@
+<!DOCTYPE HTML>
+<HTML lang="en">
+
+<Head>
+	<Title>WACKY!!</TITLE>
+
+	<!-- 
+		GLSL is the language used for shaders (GL Shader Language)
+		Attribute - you specify how to pull the data out of the buffers you supply.
+		Buffers - Data loaded onto the GPU (Normally vertex information)
+		Uniforms - global variables (in GLSL) that you set before you run the shader program
+		Textures - Textures are arrays of data you can randomly acces in your shader program.  
+		Varying - are way for a vertex shader to pass data to the fragmentShader.
+		-->
+	<SCRIPT id="2dVertexShader" type="notjs">
+		attribute vec4 a_position;
+		attribute vec3 a_color;
+		attribute vec3 a_texture;
+		attribute vec4 a_normal;
+		varying vec3 v_color;
+		varying vec3 v_texture;
+		varying vec4 v_normal;
+
+		uniform vec3 u_translation;
+		uniform vec3 u_rotation;
+		uniform vec3 u_scale;
+
+		vec4 ScaleObject(vec4 pos)
+		{
+			if(length(u_scale) != 0.0)
+			{
+				mat4 scaleM = mat4(u_scale.x,0.0,0.0,0.0,
+									0.0,u_scale.y,0.0,0.0,
+									0.0,0.0,u_scale.z,0.0,
+									0.0,0.0,0.0,1.0);
+				return scaleM*pos;
+			}
+			else
+			{
+				return pos;
+			}
+		}
+
+		vec4 RotateObject(vec4 pos)
+		{
+			vec3 cos = cos(u_rotation);
+			vec3 sin = sin(u_rotation);
+
+			mat4 rX = mat4( 1.0,  0.0,  0.0,  0.0,
+							0.0,  cos.x,sin.x,0.0,
+							0.0, -sin.x,cos.x,0.0,
+							0.0,  0.0,  0.0,  1.0);
+
+			mat4 rY = mat4( cos.y,0.0, -sin.y,0.0,
+							0.0,  1.0,  0.0,  0.0,
+							sin.y,0.0,  cos.y,0.0,
+							0.0,  0.0,  0.0,  1.0);
+
+			mat4 rZ = mat4( cos.z,sin.z,0.0,  0.0,
+						   -sin.z,cos.z,0.0,  0.0,
+							0.0,  0.0,  1.0,  0.0,
+							0.0,  0.0,  0.0,  1.0);
+
+			return rX * rY * rZ * pos;
+		}
+
+		vec4 PositionObject(vec4 pos)
+		{
+			mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+									0.0,1.0,0.0,0.0,
+									0.0,0.0,1.0,0.0,
+									u_translation.x,u_translation.y,u_translation.z,1.0);
+			return translateM*pos;
+		}
+
+		void main()
+		{
+			v_color = a_color;
+			v_texture = a_texture;
+			v_normal = RotateObject(a_normal);
+			gl_Position=PositionObject(RotateObject(ScaleObject(a_position)));
+		}		
+	</SCRIPT>
+
+	<SCRIPT id="2dFragmentShader" type="notjs">
+		//Fragment shaders do not have precision so we have to set it.
+		precision mediump float;
+		varying vec3 v_color;
+		varying vec3 v_texture;
+		varying vec4 v_normal;
+
+		void main()
+		{
+			float value = (dot(v_normal,normalize(vec4(0,1,-1,0))) + 1.0)/2.0;
+			float oneMinus = (1.0 - value);
+		 	gl_FragColor = mix(vec4(v_color,1),vec4(0.6,0.4,0.7,1),oneMinus * oneMinus);
+		}
+	</SCRIPT>
+
+	
+
+	<SCRIPT>
+		class InitWebGLProgram {
+			constructor() {
+				gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+				gl.clearColor(1, 1, 1, 1);
+				gl.clear(gl.COLOR_BUFFER_BIT);
+				gl.enable(gl.DEPTH_TEST);
+				gl.disable(gl.CULL_FACE);
+			}
+			createShader(type, source) {
+				var shader = gl.createShader(type);
+				gl.shaderSource(shader, source);
+				gl.compileShader(shader);
+
+				var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+				if (success) {
+					return shader;
+				}
+
+				console.error(gl.getShaderInfoLog(shader));
+				gl.deleteShader(shader);
+			}
+
+			createProgram(vs, fs) {
+				var program = gl.createProgram();
+				gl.attachShader(program, vs);
+				gl.attachShader(program, fs);
+				gl.linkProgram(program);
+				var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+				if (success) {
+					return program;
+				}
+
+				console.error(gl.getProgramInfoLog(program));
+				gl.deleteProgram(program);
+			}
+		}
+		class Pyramid {
+			constructor() {
+				this.buffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				//Now we want to add color to our vertices information.
+				this.vertices =
+					[-.5,-.5,0,0,0,0,
+					 .5,-.5,0,1,0,0,
+					 0,.5,0,1,0,0,
+						
+					 -.5,-.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 .5,-.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 .5,-.5,0,0,0,1,
+					 0,.5,0,0,0,1,
+					 
+					 0,.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 -.5,-.5,0,1,1,0,
+
+					 .5,.5,0,0,0,0,
+					 -.5,.5,0,1,0,0,
+					 0,-.5,0,1,0,0,
+						
+					 .5,.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 -.5,.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 -.5,.5,0,0,0,1,
+					 0,-.5,0,0,0,1,
+					 
+					 0,-.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 .5,.5,0,1,1,0
+
+					 
+					 ];
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertices), gl.STATIC_DRAW);
+				this.loc = [0.5, 0.2, 0.0];
+				this.rot = [0.0, 0.0, 0.0];
+			}
+			
+			update() {
+				this.rot[1] += 0.05;
+				this.loc[0] += 0;
+			}
+			
+			render(program)
+			{    
+				//Position
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				let positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+				let size = 3;          
+				let type = gl.FLOAT;   
+				let normalize = false; 
+				let stride = 6 * Float32Array.BYTES_PER_ELEMENT;    
+				let offset = 0;        // start at the beginning of the buffer
+				gl.enableVertexAttribArray(positionAttributeLocation);
+				gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+				
+				//Color
+				let colorAttributeLocation = gl.getAttribLocation(program, 'a_color');
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 3 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(colorAttributeLocation);
+				gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+				
+				let tranLoc  = gl.getUniformLocation(program, 'u_translation');
+				gl.uniform3fv(tranLoc, new Float32Array(this.loc));
+				let thetaLoc = gl.getUniformLocation(program, 'u_rotation');
+				gl.uniform3fv(thetaLoc, new Float32Array(this.rot));
+				
+				let primitiveType = gl.TRIANGLES;
+				offset = 0;
+				let count = 90;
+				gl.drawArrays(primitiveType, offset, count);
+			}
+		}
+
+		class Pyramid2 {
+			constructor() {
+				this.buffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				//Now we want to add color to our vertices information.
+				this.vertices =
+					[-.5,-.5,0,0,0,0,
+					 .5,-.5,0,1,0,0,
+					 0,.5,0,1,0,0,
+						
+					 -.5,-.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 .5,-.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 .5,-.5,0,0,0,1,
+					 0,.5,0,0,0,1,
+					 
+					 0,.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 -.5,-.5,0,1,1,0,
+
+					 .5,.5,0,0,0,0,
+					 -.5,.5,0,1,0,0,
+					 0,-.5,0,1,0,0,
+						
+					 .5,.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 -.5,.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 -.5,.5,0,0,0,1,
+					 0,-.5,0,0,0,1,
+					 
+					 0,-.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 .5,.5,0,1,1,0
+
+					 
+					 ];
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertices), gl.STATIC_DRAW);
+				this.loc = [0.1, -0.5, 0.0];
+				this.rot = [0.0, 0.0, 0.0];
+			}
+			
+			update() {
+				this.rot[1] += 0.01;
+				this.rot[0] += -0.01;
+				this.loc[0] += 0;
+			}
+			
+			render(program)
+			{    
+				//Position
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				let positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+				let size = 3;          
+				let type = gl.FLOAT;   
+				let normalize = false; 
+				let stride = 6 * Float32Array.BYTES_PER_ELEMENT;    
+				let offset = 0;        // start at the beginning of the buffer
+				gl.enableVertexAttribArray(positionAttributeLocation);
+				gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+				
+				//Color
+				let colorAttributeLocation = gl.getAttribLocation(program, 'a_color');
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 3 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(colorAttributeLocation);
+				gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+				
+				let tranLoc  = gl.getUniformLocation(program, 'u_translation');
+				gl.uniform3fv(tranLoc, new Float32Array(this.loc));
+				let thetaLoc = gl.getUniformLocation(program, 'u_rotation');
+				gl.uniform3fv(thetaLoc, new Float32Array(this.rot));
+				
+				let primitiveType = gl.TRIANGLES;
+				offset = 0;
+				let count = 90;
+				gl.drawArrays(primitiveType, offset, count);
+			}
+		}
+
+		class Pyramid1 {
+			constructor() {
+				this.buffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				//Now we want to add color to our vertices information.
+				this.vertices =
+					[-.5,-.5,0,0,0,0,
+					 .5,-.5,0,1,0,0,
+					 0,.5,0,1,0,0,
+						
+					 -.5,-.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 .5,-.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 .5,-.5,0,0,0,1,
+					 0,.5,0,0,0,1,
+					 
+					 0,.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 -.5,-.5,0,1,1,0,
+
+					 .5,.5,0,0,0,0,
+					 -.5,.5,0,1,0,0,
+					 0,-.5,0,1,0,0,
+						
+					 .5,.5,0,0,1,0,
+					 0,0,-.5,0,1,0,
+					 -.5,.5,0,0,1,0,
+					 
+					 0,0,-.5,0,0,1,
+					 -.5,.5,0,0,0,1,
+					 0,-.5,0,0,0,1,
+					 
+					 0,-.5,0,1,1,0,
+					 0,0,-.5,1,1,0,
+					 .5,.5,0,1,1,0
+
+					 
+					 ];
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertices), gl.STATIC_DRAW);
+				this.loc = [-0.5, 0.2, 0.0];
+				this.rot = [0.0, 0.0, 0.0];
+			}
+			
+			update() {
+				this.rot[2] += 0.05;
+				this.rot[1] += -0.05;
+				this.loc[0] += 0;
+			}
+			
+			render(program)
+			{    
+				//Position
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				let positionAttributeLocation = gl.getAttribLocation(program, 'a_position');
+				let size = 3;          
+				let type = gl.FLOAT;   
+				let normalize = false; 
+				let stride = 6 * Float32Array.BYTES_PER_ELEMENT;    
+				let offset = 0;        // start at the beginning of the buffer
+				gl.enableVertexAttribArray(positionAttributeLocation);
+				gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+				
+				//Color
+				let colorAttributeLocation = gl.getAttribLocation(program, 'a_color');
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 6 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 3 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(colorAttributeLocation);
+				gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+				
+				let tranLoc  = gl.getUniformLocation(program, 'u_translation');
+				gl.uniform3fv(tranLoc, new Float32Array(this.loc));
+				let thetaLoc = gl.getUniformLocation(program, 'u_rotation');
+				gl.uniform3fv(thetaLoc, new Float32Array(this.rot));
+				
+				let primitiveType = gl.TRIANGLES;
+				offset = 0;
+				let count = 90;
+				gl.drawArrays(primitiveType, offset, count);
+			}
+		}
+		
+
+		class Shape {
+			constructor(loc) {
+				this.buffer = gl.createBuffer();
+				this.vertData = [];
+				this.loc = [0.0, 0.0, 0.0];
+				this.rot = [0.0, 0.0, 0.0];
+				this.scale = [1.0, 1.0, 1.0]
+			}
+			
+			bufferVertData() {
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.vertData), gl.STATIC_DRAW);
+			}
+			render(program) {
+				//Position
+				gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+				var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+				var size = 3;
+				var type = gl.FLOAT;
+				var normalize = false;
+				var stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+				var offset = 0;        // start at the beginning of the buffer
+				gl.enableVertexAttribArray(positionAttributeLocation);
+				gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+
+				//Color
+				var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 3 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(colorAttributeLocation);
+				gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+
+				//Texture
+				var textureAttributeLocation = gl.getAttribLocation(program, "a_texture");
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 6 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(textureAttributeLocation);
+				gl.vertexAttribPointer(textureAttributeLocation, size, type, normalize, stride, offset);
+
+				//Normal
+				var normalAttributeLocation = gl.getAttribLocation(program, "a_normal");
+				size = 3;
+				type = gl.FLOAT;
+				normalize = false;
+				stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+				offset = 9 * Float32Array.BYTES_PER_ELEMENT;
+				gl.enableVertexAttribArray(normalAttributeLocation);
+				gl.vertexAttribPointer(normalAttributeLocation, size, type, normalize, stride, offset);
+
+				var tranLoc = gl.getUniformLocation(program, 'u_translation');
+				gl.uniform3fv(tranLoc, new Float32Array(this.loc));
+				var thetaLoc = gl.getUniformLocation(program, 'u_rotation');
+				gl.uniform3fv(thetaLoc, new Float32Array(this.rot));
+				var scaleLoc = gl.getUniformLocation(program, 'u_scale');
+				gl.uniform3fv(scaleLoc, new Float32Array(this.scale));
+
+				var primitiveType = gl.TRIANGLES;
+				offset = 0;
+				gl.drawArrays(primitiveType, offset, this.vertData.length/6);
+			}
+			update(delta, time){}
+		}
+
+		class Main {
+			constructor() {
+				this.webGL = new InitWebGLProgram();
+				var vertexShaderSource = document.getElementById("2dVertexShader").text;
+				var fragmentShaderSource = document.getElementById("2dFragmentShader").text;
+				var vertexShader = this.webGL.createShader(gl.VERTEX_SHADER, vertexShaderSource);
+				var fragmentShader = this.webGL.createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+				this.program = this.webGL.createProgram(vertexShader, fragmentShader);
+				gl.useProgram(this.program);
+
+				this.shapes = new Set();
+
+				
+				this.shapes.add(new Pyramid());
+				this.shapes.add(new Pyramid1());
+				this.shapes.add(new Pyramid2());
+				
+			}
+
+
+			static mainLoop(timestamp) {
+				timestamp /= 1000;
+				var delta = timestamp - mainInstance.lastTime
+
+				mainInstance.lastTime = timestamp;
+
+				mainInstance.updateAll(delta);
+				mainInstance.renderAll();
+
+				requestAnimationFrame(Main.mainLoop);
+			}
+
+			updateAll(delta) {
+				this.shapes.forEach(e => {
+					e.update(delta,mainInstance.lastTime);
+				});
+			}
+
+			renderAll() {
+				this.shapes.forEach(e => {
+					e.render(this.program);
+				});
+			}
+
+			mouseClick(event) {
+				var ufo = new Pyramid()
+				ufo.loc = [0,0,-0.5]
+				ufo.xVel = (Math.random() - 0.5) / 64;
+				ufo.yVel = (Math.random() - 0.5) / 64;
+				ufo.offset = Math.random() * 32
+
+				ufo.update = (delta, time) => {
+					ufo.rot[0] = Math.sin((time + ufo.offset) * 8) * Math.PI / 8;
+					ufo.rot[1] = (((ufo.offset + time) * 0.75) + ufo.offset) % Math.PI*2
+					ufo.loc[0] += ufo.xVel;
+					ufo.loc[1] += ufo.yVel;
+					
+					var maxLoc = Math.max(Math.abs(ufo.loc[0]),Math.abs(ufo.loc[1]))
+
+					var size = Math.min(maxLoc,0.25)
+					ufo.scale = [size,size,size]
+
+					if(maxLoc > 1.5)
+					{
+						mainInstance.shapes.delete(ufo)
+
+					}
+				}
+				this.shapes.add(ufo);
+			}
+
+			webGLPosition(clientX, clientY) {
+				// convert coordinates from pixel to webGL
+				var rect = canvas.getBoundingClientRect(); // get the rect of the canvas
+				var realX = clientX - rect.left; // the X pos on the page, offset by the canvas bounds
+				var realY = clientY - rect.top // the Y pos on the page, offset by the canvas bounds
+				var x = -1 + 2 * realX / canvas.width; // the webGL-adjusted X, between -1 and 1
+				var y = -1 + 2 * (canvas.height - realY) / canvas.height; // the webGL-adjusted Y, between -1 and 1, with the y-axis inverted
+
+				return { x, y }
+			}
+		}
+
+		function mouseClick(event) {
+			mainInstance.mouseClick(event);
+		}
+
+	</SCRIPT>
+</Head>
+<style>
+	* {
+		margin: 0;
+		padding: 0;
+		box-sizing: content-box;
+	}
+
+	.fullscreen {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+</style>
+<BODY
+	
+	<HEADER>
+
+	</HEADER>
+
+	<div class="fullscreen">
+		<CANVAS id="myCanvas" width="640" height="640" style="background-color: green; border: 4px ;">
+			Your browser does not support canvas.
+		</CANVAS>
+	</div>
+
+	<FOOTER>
+
+	</FOOTER>
+	<SCRIPT>
+		var canvas = document.getElementById("myCanvas");
+		var gl = canvas.getContext("webgl");
+		
+		canvas.addEventListener("click", mouseClick);
+
+		var mainInstance = new Main();
+
+		requestAnimationFrame(Main.mainLoop);
+	</SCRIPT>
+</BODY>
+
+</HTML>
